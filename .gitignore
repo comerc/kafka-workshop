@@ -18,3 +18,5 @@
 # Go binaries
 examples/consumer/consumer
 examples/consumer/producer
+
+data

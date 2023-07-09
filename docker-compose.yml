@@ -1,7 +1,5 @@
 version: '3.9'
 
-################################################################################
-
 x-app: &app
   build: &app-build
     context: .
@@ -11,7 +9,7 @@ x-app: &app
   command:
     - /bin/sh
     - -c
-    - "while : ; do sleep 60 ; done"
+    - 'while : ; do sleep 60 ; done'
   restart: unless-stopped
 
 x-consumer: &consumer
@@ -19,101 +17,25 @@ x-consumer: &consumer
   command:
     - app
   environment:
-    KAFKA_TOPIC: "example"
-    KAFKA_BROKERS: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
-    KAFKA_CONSUMER_GROUP: "example-consumer-group"
+    KAFKA_TOPIC: 'example'
+    KAFKA_BROKERS: 'kafka1:9091,kafka2:9092,kafka3:9093'
+    KAFKA_CONSUMER_GROUP: 'example-consumer-group'
   build:
     <<: *app-build
     args:
-      BUILD_TARGET: "consumer"
+      BUILD_TARGET: 'consumer'
 
 x-producer: &producer
   <<: *app
   command:
     - app
   environment:
-    KAFKA_TOPIC: "example"
-    KAFKA_BROKERS: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
+    KAFKA_TOPIC: 'example'
+    KAFKA_BROKERS: 'kafka1:9091,kafka2:9092,kafka3:9093'
   build:
     <<: *app-build
     args:
-      BUILD_TARGET: "producer"
-
-x-kafka: &kafka
-  build: &kafka-build
-    context: .
-    dockerfile: Dockerfile.kafka
-    args:
-      JMX_JAVAAGENT_VERSION: "${JMX_JAVAAGENT_VERSION}"
-  environment: &kafka-env
-    HOME: /opt/bitnami/kafka
-    KAFKA_CFG_ZOOKEEPER_CONNECT: "zookeeper:2181"
-    ALLOW_PLAINTEXT_LISTENER: "yes"
-    KAFKA_OPTS: >-
-      -javaagent:/opt/bitnami/kafka/libs/jmx_prometheus_javaagent-${JMX_JAVAAGENT_VERSION}.jar=${JMX_JAVAAGENT_PORT}:/etc/kafka/prometheus/kafka.yml
-  volumes:
-    - ./jmx-exporter/kafka.yml:/etc/kafka/prometheus/kafka.yml:ro
-  depends_on:
-    - zookeeper
-
-x-zookeeper: &zookeeper
-  image: docker.io/bitnami/zookeeper:${ZK_VERSION}
-  volumes:
-    - "zookeeper:/bitnami"
-  environment:
-    ALLOW_ANONYMOUS_LOGIN: "yes"
-
-x-redpanda-console: &redpanda-console
-  image: docker.redpanda.com/vectorized/console:v${REDPANDA_CONSOLE_VERSION}
-  entrypoint: /bin/sh
-  command: -c 'echo "$$CONSOLE_CONFIG_FILE" > /tmp/config.yml; /app/console'
-  environment: 
-    CONFIG_FILEPATH: /tmp/config.yml
-    CONSOLE_CONFIG_FILE: |
-      kafka:
-        brokers: ["kafka-1:9092", "kafka-2:9092", "kafka-3:9092"]
-        schemaRegistry:
-          enabled: false
-          urls: ["http://redpanda-0:8081"]
-  ports:
-    - ${REDPANDA_CONSOLE_PORT}:8080
-  depends_on:
-    - kafka-1
-    - kafka-2
-    - kafka-3
-
-x-kafka-exporter: &kafka-exporter
-  image: docker.io/bitnami/kafka-exporter:${KAFKA_EXPORTER_VERSION}
-  restart: unless-stopped
-  command: ["--kafka.server=kafka-1:9092"]
-  # profiles:
-  #   - metrics
-
-x-prometheus: &prometheus
-  image: quay.io/prometheus/prometheus:${PROMETHEUS_VERSION}
-  volumes:
-    - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-  ports:
-    - ${PROMETHEUS_PORT}:9090
-  # profiles:
-  #   - metrics
-
-x-grafana: &grafana
-  image: docker.io/grafana/grafana:${GRAFANA_VERSION}
-  user: root
-  restart: unless-stopped
-  ports:
-    - ${GRAFANA_PORT}:3000
-  volumes:
-    - grafana:/var/lib/grafana
-    - ./grafana/provisioning:/etc/grafana/provisioning
-    - ./grafana/dashboards:/var/lib/grafana/dashboards
-  # profiles:
-  #   - metrics
-  environment:
-    GF_SECURITY_ADMIN_PASSWORD: admin
-
-################################################################################
+      BUILD_TARGET: 'producer'
 
 services:
   # Sample consumer
@@ -132,56 +54,142 @@ services:
     <<: *producer
     container_name: producer-1
 
-  # Zookeeper quorum
-  zookeeper:
-    <<: *zookeeper
-    container_name: zookeeper
-
-  # Redpanda Console UI
-  ui:
-    <<: *redpanda-console
-    container_name: ui
-
-  # Kafka: broker #1
-  kafka-1:
-    <<: *kafka
-    container_name: kafka-1
+  redpanda-console:
+    image: vectorized/console:v2.2.4
+    entrypoint: /bin/sh
+    command: -c 'echo "$$CONSOLE_CONFIG_FILE" > /tmp/config.yml; /app/console'
     environment:
-      <<: *kafka-env
+      CONFIG_FILEPATH: /tmp/config.yml
+      CONSOLE_CONFIG_FILE: |
+        kafka:
+          brokers: ["kafka1:9091", "kafka2:9092", "kafka3:9093"]
+          schemaRegistry:
+            enabled: false
+            urls: ["http://redpanda-0:8081"]
+    ports:
+      - 8080:8080
+    depends_on:
+      - kafka1
+      - kafka2
+      - kafka3
+
+  kafka1:
+    container_name: kafka1
+    restart: always
+    image: confluentinc/cp-kafka:7.4.0
+    hostname: kafka1
+    ports:
+      - 9091:9091
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER_INTERNAL://kafka1:19091,LISTENER_DOCKER_EXTERNAL://${DOCKER_HOST_IP:-host.docker.internal}:9091
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER_INTERNAL:PLAINTEXT,LISTENER_DOCKER_EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_BROKER_ID: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_ADVERTISED_HOST_NAME: localhost
+    volumes:
+      - ./data/kafka1/data:/var/lib/kafka/data
+    depends_on:
+      - zookeeper
 
-  # Kafka: broker #2
-  kafka-2:
-    <<: *kafka
-    container_name: kafka-2
+  kafka2:
+    container_name: kafka2
+    restart: always
+    image: confluentinc/cp-kafka:7.4.0
+    hostname: kafka2
+    ports:
+      - 9092:9092
     environment:
-      <<: *kafka-env
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER_INTERNAL://kafka2:19092,LISTENER_DOCKER_EXTERNAL://${DOCKER_HOST_IP:-host.docker.internal}:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER_INTERNAL:PLAINTEXT,LISTENER_DOCKER_EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_BROKER_ID: 2
+      KAFKA_ADVERTISED_HOST_NAME: localhost
+    volumes:
+      - ./data/kafka2/data:/var/lib/kafka/data
+    depends_on:
+      - zookeeper
 
-  # Kafka: broker #3
-  kafka-3:
-    <<: *kafka
-    container_name: kafka-3
+  kafka3:
+    container_name: kafka3
+    restart: always
+    image: confluentinc/cp-kafka:7.4.0
+    hostname: kafka3
+    ports:
+      - 9093:9093
     environment:
-      <<: *kafka-env
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER_INTERNAL://kafka3:19093,LISTENER_DOCKER_EXTERNAL://${DOCKER_HOST_IP:-host.docker.internal}:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER_INTERNAL:PLAINTEXT,LISTENER_DOCKER_EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_BROKER_ID: 3
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_ADVERTISED_HOST_NAME: localhost
+    volumes:
+      - ./data/kafka3/data:/var/lib/kafka/data
+    depends_on:
+      - zookeeper
 
-  # Grafana
-  grafana:
-    <<: *grafana
-    container_name: grafana
+  zookeeper:
+    container_name: zookeeper
+    restart: always
+    image: zookeeper:3.8.1
+    hostname: zookeeper
+    ports:
+      - 2181:2181
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_PORT: 2181
+      ALLOW_ANONYMOUS_LOGIN: yes
+    volumes:
+      - ./data/zookeeper/data:/data
+      - ./data/zookeeper/datalog:/datalog
 
-  # Prometheus
-  prometheus:
-    <<: *prometheus
-    container_name: prometheus
+  kafdrop:
+    container_name: kafdrop
+    restart: always
+    image: obsidiandynamics/kafdrop:3.31.0
+    ports:
+      - 9000:9000
+    environment:
+      KAFKA_BROKERCONNECT: kafka1:19091
+    depends_on:
+      - kafka1
+      - kafka2
+      - kafka3
 
-  # Prometheus
   kafka-exporter:
-    <<: *kafka-exporter
-    container_name: kafka-exporter
+    image: bitnami/kafka-exporter:1.7.0
+    restart: unless-stopped
+    command: ['--kafka.server=kafka1:9091']
+    # profiles:
+    #   - metrics
 
-################################################################################
+  prometheus:
+    image: bitnami/prometheus:2.45.0
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - 9090:9090
+    # profiles:
+    #   - metrics
+
+  grafana:
+    image: grafana/grafana:10.0.1
+    user: root
+    restart: unless-stopped
+    ports:
+      - 3000:3000
+    volumes:
+      - grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    # profiles:
+    #   - metrics
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
 
 volumes:
   zookeeper:
