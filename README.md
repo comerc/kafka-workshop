@@ -71,4 +71,6 @@ Bingo you can see the metrics from Confluent Kafka running on the container!
 
 -- OR --
 
-[Create A Kafka Multi-Broker Cluster](https://docs.bitnami.com/google-templates/infrastructure/kafka/administration/create-cluster/) by bitnami.
+- [Create A Kafka Multi-Broker Cluster](https://docs.bitnami.com/google-templates/infrastructure/kafka/administration/create-cluster/) by bitnami.
+- [Kraft mode + multiple brokers](https://docs.kafka-ui.provectus.io/configuration/complex-configuration-examples/kraft-mode-+-multiple-brokers)
+- [Redpanda is a streaming data platform for developers. Kafka API compatible. 10x faster. No ZooKeeper. No JVM!](https://docs.redpanda.com/docs/get-started/quick-start/)
